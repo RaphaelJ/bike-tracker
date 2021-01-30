@@ -11,11 +11,15 @@ void error(const String &msg)
     Serial.print("[ERROR]   ");
     Serial.println(msg);
 
+    // Blinks all the leds and never return.
+    bool leds_on = true;
     for (;;) {
-        led_t::red.on();
+        for (led_t *led : led_t::all) {
+            led->set(leds_on);
+        }
+
         delay(500);
-        led_t::red.off();
-        delay(500);
+        leds_on = !leds_on;
     }
 }
 

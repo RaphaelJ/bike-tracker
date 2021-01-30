@@ -58,27 +58,7 @@ public:
             instance_.enableGNSS(gnss.enabled, gnss.id);
         }
 
-        sfe_ublox_gnss_ids_e gnsses[] {
-	        SFE_UBLOX_GNSS_ID_GPS,
-	        SFE_UBLOX_GNSS_ID_SBAS,
-	        SFE_UBLOX_GNSS_ID_GALILEO,
-	        SFE_UBLOX_GNSS_ID_BEIDOU,
-	        SFE_UBLOX_GNSS_ID_IMES,
-	        SFE_UBLOX_GNSS_ID_QZSS,
-	        SFE_UBLOX_GNSS_ID_GLONASS
-        };
-
-        for (sfe_ublox_gnss_ids_e gnss : gnsses) {
-            Serial.print(gnss);
-            Serial.print(" enabled: ");
-            Serial.println(instance_.isGNSSenabled(gnss));
-        }
-
-        // instance_.powerSaveMode();
-        Serial.print("power safe mode: ");
-        Serial.println(instance_.getPowerSaveMode());
-
-        // instance_.powerOff(20000);
+        powerSave(false);
 
         logger::info("GPS successfuly initialized.");
     }
@@ -171,7 +151,7 @@ private:
 
 const gps_t::gnss_config_t gps_t::GNSS_CONFIG[] = {
     {SFE_UBLOX_GNSS_ID_GPS, true},
-    {SFE_UBLOX_GNSS_ID_SBAS, true},
+    {SFE_UBLOX_GNSS_ID_SBAS, false},
     {SFE_UBLOX_GNSS_ID_GALILEO, true},
     {SFE_UBLOX_GNSS_ID_BEIDOU, false},
     {SFE_UBLOX_GNSS_ID_IMES, false},
