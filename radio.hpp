@@ -98,7 +98,6 @@ public:
         if (!success) {
             logger::warning("Error while transmitting SigFox paquet.");
         }
-        logger::info("Status");
 
         logger::info("SigFox status: " + String(SigFox.statusCode(SIGFOX), HEX));
 

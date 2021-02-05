@@ -41,30 +41,36 @@ public:
     };
 
     gps_t(Uart &serial = Serial1) : serial_(serial)
-    {
-    }
+    { }
 
     void
     setup() 
     {
         serial_.begin(9600);
         while(!serial_);
-
+        
         if (!instance_.begin(serial_)) {
             logger::error("Unable to setup GPS.");
         }
+
+        powered_on_ = true;
 
         for (const gnss_config_t &gnss : GNSS_CONFIG) {
             instance_.enableGNSS(gnss.enabled, gnss.id);
         }
 
-        powerSave(false);
+        power_save(false);
 
         logger::info("GPS successfuly initialized.");
+
     }
 
     position_t get_position()
     {
+        if (!powered_on_) {
+            wake_up();
+        }
+
         position_t pos;
 
         pos.has_gnss_fix = instance_.getGnssFixOk();
@@ -98,14 +104,40 @@ public:
         return instance_;
     }
 
-    bool powerSave()
+    // Power off the GPS module until the next location request or call to `wake_up()`.
+    void sleep()
     {
-        return instance_.getPowerSaveMode();
+        if (powered_on_) {
+            logger::info("Powering off GPS");
+            instance_.powerOff(0);
+            powered_on_ = false;
+        }
     }
 
-    void powerSave(bool enabled)
+    void wake_up()
     {
-        instance_.powerSaveMode(enabled);   
+        if (!powered_on_) {
+            logger::info("Powering up GPS");
+            setup();
+        }
+    }
+
+    bool power_save()
+    {
+        if (!powered_on_) {
+            wake_up();
+        }
+
+        return instance_.getPowerSaveMode();
+    }
+ 
+    void power_save(bool enabled)
+    {
+        if (!powered_on_) {
+            wake_up();
+        }
+
+        instance_.powerSaveMode(enabled);
     }
 
     // Computes the distance (in meters) between two coordinates.
@@ -147,6 +179,8 @@ private:
     Uart &serial_;
 
     SFE_UBLOX_GNSS instance_;
+
+    bool powered_on_{false};
 };
 
 const gps_t::gnss_config_t gps_t::GNSS_CONFIG[] = {
