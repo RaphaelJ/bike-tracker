@@ -99,7 +99,14 @@ def new_probe():
 
         db.session.commit()
 
-        return 'Created', 201
+        # Answers with the backend probe ID, as 8 byte hexadecimal string
+        response = {
+            form.device.data: {
+                'downlinkData': hex(probe.id)[2:].rjust(8 * 2, '0')
+            }
+        }
+
+        return jsonify(response), 201
     else:
         return 'Bad request', 400
 
