@@ -1,7 +1,9 @@
-#include <cmath>
 #include <climits>
+#include <cmath>
+#include <ctime>
 
 #include <Arduino.h>
+#include <RTCZero.h>
 
 #include "gps.hpp"
 #include "leds.hpp"
@@ -15,28 +17,26 @@ class bike_tracker_t {
 public:
     enum class state_t { TRACKING, POWER_SAVE };
 
-    static constexpr bool DEBUG = false;
+    static constexpr bool DEBUG = true;
 
     // Will consider the bike idle if it moves slower than 3kph between two GPS probes.
     static constexpr float IDLE_THRESHOLD = 5.0f * 1000.0f / 3600.0f; // meters per sec
 
     // Will wait 1 second after an unsuccessful GPS probe before trying again.
-    static constexpr uint32_t GPS_RETRY_DELAY = 5 * 1000; // millisec
+    static constexpr uint32_t GPS_RETRY_DELAY = 5; // millisec
 
     // Smooth the GPS altitude probes by using a recursive smoother.
-    static constexpr float GPS_ALT_SMOOTHER_FACTOR = 0.2f; // millisec
+    static constexpr float GPS_ALT_SMOOTHER_FACTOR = 0.2f;  // ratio
 
-    // When in the TRACKING state, probes the location and speed every 30 seconds, and sends the
-    // location every 5 minutes. The tracker will move into the POWER_SAVE state if there the sensor
-    // stayed idle for 10 location probes.
-    static constexpr uint32_t TRACKING_GPS_PROBE_DELAY  = 30 * 1000;        // millisec
-    static constexpr uint32_t TRACKING_RADIO_DELAY      = 5 * 60 * 1000;    // millisec
-    static constexpr uint32_t TRACKING_IDLE_PROBES      = 5;
+    // When in the TRACKING state, probes the location and speed every 20 seconds, and sends the
+    // location every 3 minutes. The tracker will move into the POWER_SAVE state if there the sensor
+    // stayed idle for 9 location probes (3 minutes).
+    static constexpr uint32_t TRACKING_GPS_PROBE_DELAY  = 20;        // sec
+    static constexpr uint32_t TRACKING_RADIO_DELAY      = 3 * 60;    // sec
+    static constexpr uint32_t TRACKING_IDLE_PROBES      = 9;
 
-    // When in POWER_SAVE mode, probes the location every 15 minutes, movements every 30 seconds (
-    // for 1 second), and send the location every 30 minutes. 
-    static constexpr uint32_t POWER_SAVE_GPS_PROBE_DELAY = 60 * 60 * 1000;  // millisec
-    static constexpr uint32_t POWER_SAVE_RADIO_DELAY     = 60 * 60 * 1000;  // millisec
+    // When in POWER_SAVE mode, probes and transmit the location every 60 minutes. 
+    static constexpr uint32_t POWER_SAVE_GPS_PROBE_DELAY = 60 * 60;  // sec
 
     void setup()
     {
@@ -50,6 +50,9 @@ public:
         radio_.instance.setup();
         movement_.detector.setup();
 
+        clock_.begin();
+        clock_.setY2kEpoch(0);
+
         for (led_t *led : led_t::all) { 
             led->off();
         }
@@ -59,14 +62,7 @@ public:
     {
         led_t::blue.on(); // Blue LED in on during when the controller is awake.
 
-        unsigned long millis_current = millis();
-        if (millis_prev_ > millis_current) {
-            logger::warning("millis() overflowed.");
-            millis_offset_ += (uint64_t) ULONG_MAX;
-
-        }
-        millis_prev_ = millis_current;
-        uint64_t now = (uint64_t) millis_current + millis_offset_;
+        uint32_t now = clock_.getY2kEpoch();
 
         switch (state_) {
         case state_t::TRACKING:
@@ -81,20 +77,16 @@ public:
 private:
     state_t state_{state_t::TRACKING};
 
-    // Value to add to `millis()` to obtain the actual time of the board. This is required because
-    // of overflows and deep sleep events.
-    uint64_t millis_offset_{0};
-
-    unsigned long millis_prev_{0};
+    RTCZero clock_{};
 
     struct {
         gps_t instance;
 
-        unsigned long last_probe_try_time{0};
+        uint32_t next_probe_time{0};
 
         bool has_position{false}; // false until we get at least on successful GPS position.
-        uint64_t last_position_time{0};
         gps_t::position_t last_position;
+        uint32_t last_position_time;
         float smoothed_alt;
 
         // Accumulated since the last location message:
@@ -109,123 +101,100 @@ private:
     struct {
         radio_t instance;
 
-        uint64_t last_msg_time{0};
+        uint32_t next_msg_time{TRACKING_RADIO_DELAY};
+        uint32_t last_msg_time{0};
     } radio_;
 
     struct {
         movement_detector_t detector{A1};
-
-        uint64_t last_detection_time{0};
     } movement_;
 
-    void loop_tracking(uint64_t now)
+    void loop_tracking(uint32_t now)
     {
-        if (
-            now - gps_.last_probe_try_time >= GPS_RETRY_DELAY && (
-                !gps_.has_position ||
-                now - gps_.last_position_time >= TRACKING_GPS_PROBE_DELAY
-            )) {
-            probe_gps(now);
+        if (now >= gps_.next_probe_time) {
+            bool success = probe_gps(now);
+            if (success) {
+                gps_.next_probe_time = now + TRACKING_GPS_PROBE_DELAY;
+            } else {
+                gps_.next_probe_time = now + GPS_RETRY_DELAY;
+            }
         }
 
-        if (now - radio_.last_msg_time >= TRACKING_RADIO_DELAY) {
+        if (now >= radio_.next_msg_time) {
             send_location_msg(now);
+            radio_.next_msg_time = now + TRACKING_RADIO_DELAY;
         }
 
         if (gps_.n_idle >= TRACKING_IDLE_PROBES) {
             // Idle for to much time, go to power save.
-            to_power_save();
+            to_power_save(now);
         } else {
             // Sleep until the next event.
-            unsigned long sleep_duration_to_next_gps_probe =
-                GPS_RETRY_DELAY - (now - gps_.last_probe_try_time);
-
-            if (gps_.has_position) {
-                sleep_duration_to_next_gps_probe = max(
-                    sleep_duration_to_next_gps_probe,
-                    TRACKING_GPS_PROBE_DELAY - (now - gps_.last_position_time)
-                );
-            }
-
-            unsigned long sleep_duration = min(
-                sleep_duration_to_next_gps_probe,
-                TRACKING_RADIO_DELAY - (now - radio_.last_msg_time)
-            );
-
-            sleep(sleep_duration);
+            unsigned long duration = min(gps_.next_probe_time, radio_.next_msg_time) - now;
+            sleep(max(500, duration * 1000));
         }
     }
 
-    void loop_power_save(uint64_t now)
+    void loop_power_save(uint32_t now)
     {
         if (movement_.detector.detected()) {
             // Movement detected, go to live tracking.
             logger::info("Movement detected.");
-            to_tracking();
+            to_tracking(now);
             return;
         }
 
-        if (
-            now - gps_.last_probe_try_time >= GPS_RETRY_DELAY && (
-                !gps_.has_position ||
-                now - gps_.last_position_time >= POWER_SAVE_GPS_PROBE_DELAY)) {
+        if (now >= gps_.next_probe_time) {
             bool success = probe_gps(now);
             if (success) {
                 gps_.instance.sleep();
-            }
-        }
+                gps_.next_probe_time = now + TRACKING_GPS_PROBE_DELAY;
 
-        if (now - radio_.last_msg_time >= POWER_SAVE_RADIO_DELAY) {
-            send_location_msg(now);
+                send_location_msg(now);
+            } else {
+                gps_.next_probe_time = now + GPS_RETRY_DELAY;
+            }
         }
 
         if (gps_.n_idle == 0) {
             logger::info("GPS movement detected.");
-            to_tracking();
+            to_tracking(now);
         } else {
-            // Sleep until the next event.
-            unsigned long sleep_duration_to_next_gps_probe =
-                GPS_RETRY_DELAY - (now - gps_.last_probe_try_time);
-
-            if (gps_.has_position) {
-                sleep_duration_to_next_gps_probe = max(
-                    sleep_duration_to_next_gps_probe,
-                    POWER_SAVE_GPS_PROBE_DELAY - (now - gps_.last_position_time)
-                );
-            }
-
-            unsigned long sleep_duration = min(
-                sleep_duration_to_next_gps_probe,
-                POWER_SAVE_RADIO_DELAY - (now - radio_.last_msg_time)
-            );
-
-            sleep(sleep_duration);
+            // Sleep until the next GPS event.
+            unsigned long duration = gps_.next_probe_time - now;
+            sleep(max(500, duration * 1000));
         }
     }
 
-    void to_tracking()
+    void to_tracking(uint32_t now)
     {
         logger::info("Entering live tracking state");
 
         state_ = state_t::TRACKING;
         gps_.n_idle = 0;
         gps_.instance.wake_up();
+        gps_.next_probe_time = now;
+
+        radio_.next_msg_time = now + TRACKING_RADIO_DELAY;
 
         movement_.detector.disable();
-
-        led_t::builtin.on();
     }
 
-    void to_power_save()
+    void to_power_save(uint32_t now)
     {
         logger::info("Entering power save state");
 
         state_ = state_t::POWER_SAVE;
         gps_.instance.sleep();
 
+        if (gps_.has_position) {
+            gps_.next_probe_time = gps_.last_position_time + POWER_SAVE_GPS_PROBE_DELAY;
+        } else {
+            gps_.next_probe_time = now + GPS_RETRY_DELAY;
+        }
+
         movement_.detector.reset();
         movement_.detector.enable();
-        led_t::builtin.off();
     }
 
     // Sleep into a low power sleep mode for the given number of milliseconds.
@@ -234,8 +203,11 @@ private:
         logger::info("Sleep for " + String(duration) + " ms");
         led_t::blue.off();
 
-        LowPower.sleep(duration);
-        millis_offset_ += duration; // TODO: checks if the board wake up because of the RTC.
+        if (!DEBUG || state_ == state_t::POWER_SAVE) {
+            LowPower.sleep(duration);
+        } else {
+            delay(duration);
+        }
 
         led_t::blue.off();
         logger::info("Sleep ended");
@@ -244,7 +216,7 @@ private:
     // Tries to get the current position.
     //
     // Returns `true` on success.
-    bool probe_gps(unsigned long time)
+    bool probe_gps(unsigned long now)
     {
         gps_t::position_t position = gps_.instance.get_position();
 
@@ -259,8 +231,7 @@ private:
                 "Sats: " + String(position.n_satellites));
 
             if (gps_.has_position) {
-                float delta_secs = 
-                    ((float) (time - gps_.last_position_time)) / 1000.0f; // secs
+                float delta_secs = (float) (now - gps_.last_position_time);
                 float dist_meters = gps_t::distance(
                     position.coordinates, gps_.last_position.coordinates);
 
@@ -300,13 +271,11 @@ private:
             }
 
             gps_.has_position = true;
-            gps_.last_position_time = time;
             gps_.last_position = position;
+            gps_.last_position_time = now;
         } else {
             logger::warning("Unsuccessful GPS probe.");
         }
-
-        gps_.last_probe_try_time = time;
 
         return success;
     }
