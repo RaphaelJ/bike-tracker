@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>BikeTracker</title>
+</head>
+<body>
+    <table border="1">
+        <thead>
+            <tr>
+                <th width="20%">
+                    Created at
+                </th>
+                <th width="15%">
+                    Seq
+                </th>
+                <th width="30%">
+                    Coordinates
+                </th>
+                <th width="15%">
+                    Distance (m)
+                </th>
+                <th width="15%">
+                    Alt. gain (m)
+                </th>
+                <th width="15%">
+                    Max speed (kph)
+                </th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for probe in probes %}
+                <tr>
+                    <td>{{ probe.created_at }}</td>
+                    <td>{{ probe.seq }}</td>
+                    <td>
+                        <a href="https://www.openstreetmap.org/?mlat={{ probe.lat }}&mlon={{ probe.lng }}">
+                            {{ probe.lat }} {{ probe.lng }}
+                        </a>
+                    </td>
+                    <td>{{ probe.dist }}</td>
+                    <td>{{ probe.alt_gain }}</td>
+                    <td>{{ probe.max_speed }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
