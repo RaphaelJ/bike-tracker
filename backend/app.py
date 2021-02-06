@@ -22,7 +22,7 @@ import os, datetime
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 
-import wtforms
+import pytz, wtforms
 
 app = Flask(__name__)
 app.config.from_object(os.environ['APP_SETTINGS'])
@@ -30,12 +30,14 @@ app.config.from_object(os.environ['APP_SETTINGS'])
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
+timezone = pytz.timezone(os.environ.get('TIMEZONE', 'UTC'))
+
 class Probe(db.Model):
     __tablename__ = 'probes'
 
     id = db.Column(db.Integer, primary_key=True)
 
-    created_at = db.Column(db.DateTime(), nullable=False, default=datetime.datetime.utcnow)
+    received_at = db.Column(db.DateTime(), nullable=False, default=datetime.datetime.utcnow)
 
     seq = db.Column(db.Integer, nullable=False, unique=True)
 
@@ -46,6 +48,10 @@ class Probe(db.Model):
     alt_gain = db.Column(db.Integer, nullable=True)
     max_speed = db.Column(db.Float, nullable=True)
 
+    @property
+    def received_at_local(self):
+        return self.received_at.replace(tzinfo=pytz.UTC).astimezone(tz=timezone)
+
 @app.route('/')
 def index():
     """Shows a dashboard with the latest GPS locations of the tracker."""
@@ -54,7 +60,7 @@ def index():
         .order_by(Probe.seq.desc())         \
         .all()
 
-    return render_template('index.html', probes=probes)
+    return render_template('index.html', timezone=timezone, probes=probes)
 
 class ProbeForm(wtforms.Form):
     device = wtforms.StringField('Device ID', [wtforms.validators.InputRequired()])
