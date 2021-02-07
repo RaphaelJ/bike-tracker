@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 
 #include <Arduino.h>
 #include <SigFox.h>
+#include <etl/optional.h>
 
 #include "logger.hpp"
 
@@ -15,37 +17,32 @@ public:
     struct location_msg_t {
         static_assert(sizeof(float) == 4);
         
-        // Latest location. Has a 0 value if no vlaid location.
+        // Latest location. Has a 0 value if no valid location.
         float lat;
         float lng;
 
-        // Distance since the last message, in meters divided by 16 (range: [0..4080]).
+        // Latest altitude, in meters, divided by 8 (range: [0..2040] m).
+        // Do not go to the Netherlands or the Alps.
+        // Has a 0 value if no valid location.
+        uint8_t alt; 
+
+        // Distance since the last message, in meters per divided by 16 (range: [0..4080] m).
         uint8_t dist;
 
-        // Positive elevation gain, in meters divided by 2 (range: [0..510]).
+        // Positive elevation gain, in meters divided by 2 (range: [0..510] m).
         uint8_t alt_gain;
 
-        // Maximum speed, in kph multiplied by 3 (range between [0..85] kph).
-        uint8_t max_speed;  
+        // Maximum speed, in meters per second divided by 16 (range between [0..57.375] kph).
+        uint8_t max_speed;
 
-        // The time since the last tansmitted location message, in seconds square-rooted
-        // (range: [0..65025]).
-        //
-        // Has a 0 value if no previously transmitted message.
-        uint8_t last_msg;
-
-        /** Constructs the message with the actual, non scaled, values.
-         * 
-         * @param last_msg_ the delay since the last message in milliseconds.
-         */
+        // Constructs the message with the actual, non scaled, values.
         location_msg_t(
-            float lat_, float lng_, float dist_, float alt_gain_, float max_speed_,
-            uint32_t last_msg_) :
-            lat(lat_), lng(lng_),
+            float lat_, float lng_, float alt_,
+            float dist_, float alt_gain_, float max_speed_) :
+            lat(lat_), lng(lng_), alt(round(alt_ / 8)),
             dist(round(dist_ / 16)),
             alt_gain(round(alt_gain_ / 2)),
-            max_speed(round(max_speed_ * 3)),
-            last_msg(round(sqrt(((float) last_msg_) / 1000.0f)))
+            max_speed(round(max_speed_ / 16))
         { }
     } __attribute__((packed));
 
@@ -65,8 +62,11 @@ public:
         sleep();
     }
 
+    // Sends the given message.
+    //
+    // On succes, returns a 8 byte callback response.
     template<typename msg_t>
-    bool
+    etl::optional<uint64_t>
     send(const msg_t &msg)
     {
         static_assert(sizeof(msg) <= 12);
@@ -93,18 +93,35 @@ public:
 
         SigFox.write(msg_bytes, sizeof(msg));
 
-        bool success = SigFox.endPacket();
+        bool status = SigFox.endPacket(true);
 
-        if (!success) {
-            logger::warning("Error while transmitting SigFox paquet.");
+        etl::optional<uint64_t> response;
+
+        if (status != 0) {
+            logger::warning(
+                "Error while transmitting SigFox paquet (status: 0x" + String(status, HEX) + ")");
+        } else {    
+            uint64_t value{0};
+            String value_str = String();
+
+            while (SigFox.available()) {
+                byte byte_val = (byte) SigFox.read();
+
+                value <<= 8;
+                value |= byte_val;
+
+                value_str += String(byte_val, HEX);
+            }
+
+            logger::info("Received callback response: 0x" + value_str);
+
+            response.emplace(value);
         }
-
-        logger::info("SigFox status: " + String(SigFox.statusCode(SIGFOX), HEX));
 
         SigFox.noDebug();
         sleep();
 
-        return success;
+        return response;
     }
 
     void 

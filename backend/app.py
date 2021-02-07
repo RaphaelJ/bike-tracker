@@ -43,6 +43,7 @@ class Probe(db.Model):
 
     lat = db.Column(db.Float, nullable=True)
     lng = db.Column(db.Float, nullable=True)
+    alt = db.Column(db.Integer, nullable=True)
 
     dist = db.Column(db.Integer, nullable=True)
     alt_gain = db.Column(db.Integer, nullable=True)
@@ -69,6 +70,7 @@ class ProbeForm(wtforms.Form):
 
     lat = wtforms.FloatField('Latitude', [wtforms.validators.InputRequired()])
     lng = wtforms.FloatField('Longitude', [wtforms.validators.InputRequired()])
+    alt = wtforms.IntegerField('Altitude', [wtforms.validators.InputRequired()])
 
     dist = wtforms.IntegerField('Distance', [wtforms.validators.InputRequired()])
     alt_gain = wtforms.IntegerField('Elevation gain', [wtforms.validators.InputRequired()])
@@ -90,10 +92,11 @@ def new_probe():
 
             lat=form.lat.data,
             lng=form.lng.data,
+            alt=form.alt.data * 8,
 
             dist=form.dist.data * 16,
             alt_gain=form.alt_gain.data * 2,
-            max_speed=form.max_speed.data / 3.0,
+            max_speed=form.max_speed.data / 16,
         )
         db.session.add(probe)
 

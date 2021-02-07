@@ -141,7 +141,10 @@ public:
     }
 
     // Computes the distance (in meters) between two coordinates.
-    static float distance(const coordinates_t &coord_a, const coordinates_t &coord_b)
+    //
+    // If `ignore_alt` is true, only computes the horizontal distance.
+    static float distance(
+        const coordinates_t &coord_a, const coordinates_t &coord_b, bool ignore_alt = false)
     {   
         // Based on http://www.movable-type.co.uk/scripts/latlong.html.
 
@@ -163,9 +166,13 @@ public:
 
         float horiz_dist = c * earth_raduis;
 
-        float vert_dist = abs(coord_a.alt - coord_b.alt);
+        if (ignore_alt) {
+            return horiz_dist;
+        } else {
+            float vert_dist = abs(coord_a.alt - coord_b.alt);
 
-        return sqrt(pow(horiz_dist, 2) + pow(vert_dist, 2));
+            return sqrt(pow(horiz_dist, 2) + pow(vert_dist, 2));
+        }
     }
 
 private:

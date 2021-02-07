@@ -10,23 +10,26 @@
     <table border="1">
         <thead>
             <tr>
-                <th width="20%">
+                <th width="10%">
+                    Seq
+                </th>
+                <th width="15%">
                     Received at ({{ timezone.zone }})
                 </th>
                 <th width="15%">
-                    Seq
-                </th>
-                <th width="30%">
                     Coordinates
                 </th>
                 <th width="15%">
-                    Distance (m)
+                    Altitude
                 </th>
                 <th width="15%">
-                    Alt. gain (m)
+                    Distance
                 </th>
                 <th width="15%">
-                    Max speed (kph)
+                    Alt. gain
+                </th>
+                <th width="15%">
+                    Max speed
                 </th>
             </tr>
         </thead>
@@ -34,16 +37,17 @@
         <tbody>
             {% for probe in probes %}
                 <tr>
-                    <td>{{ probe.received_at_local.strftime('%c') }}</td>
                     <td>{{ probe.seq }}</td>
+                    <td>{{ probe.received_at_local.strftime('%c') }}</td>
                     <td>
                         <a href="https://www.openstreetmap.org/?mlat={{ probe.lat }}&mlon={{ probe.lng }}">
                             {{ probe.lat }} {{ probe.lng }}
                         </a>
                     </td>
-                    <td>{{ probe.dist }}</td>
-                    <td>{{ probe.alt_gain }}</td>
-                    <td>{{ probe.max_speed }}</td>
+                    <td>{{ probe.alt }} m</td>
+                    <td>{{ probe.dist }} m</td>
+                    <td>{{ probe.alt_gain }} m</td>
+                    <td>{{ probe.max_speed }} m ({{ probe.max_speed / 3.6 }} km/h)</td>
                 </tr>
             {% endfor %}
         </tbody>
