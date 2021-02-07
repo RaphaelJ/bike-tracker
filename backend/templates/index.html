@@ -7,6 +7,8 @@
     <title>BikeTracker</title>
 </head>
 <body>
+    <h1>BikeTracker</h1>
+    
     <table border="1">
         <thead>
             <tr>
@@ -54,7 +56,15 @@
                         {{ "{:,.2f} m/s".format(probe.max_speed) }} 
                         ({{ "{:,.2f} km/h".format(probe.max_speed * 3.6) }})
                     </td>
-                    <td>{{ probe.activity_id }}</td>
+                    <td>
+                        {% if probe.activity_id %}
+                            <a href="{{ url_for('activity', id=probe.activity_id) }}">
+                                {{ probe.activity_id }}
+                            </a>
+                        {% else %}
+                            None
+                        {% endif %}
+                    </td>
                 </tr>
             {% endfor %}
         </tbody>

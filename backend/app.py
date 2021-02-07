@@ -1,4 +1,4 @@
-#!/bin/#!/usr/bin/env python3
+#!/usr/bin/env python3
 
 # Copyright 2021 Raphael Javaux
 #
@@ -44,6 +44,34 @@ class Activity(db.Model):
 
     probes = db.relationship('Probe', backref='activity', order_by='Probe.id')
 
+    @property
+    def started_at_local(self) -> datetime.datetime:
+        return self.probes[0].received_at_local
+
+    @property
+    def ended_at_local(self) -> datetime.datetime:
+        return self.probes[-1].received_at_local
+
+    @property
+    def duration(self) -> datetime.timedelta:
+        return self.ended_at_local - self.started_at_local
+
+    @property
+    def total_distance(self) -> int:
+        """Total distance in meters."""
+        return sum(p.dist for p in self.probes)
+
+    @property
+    def total_alt_gain(self) -> int:
+        """Total altitude gain in meters."""
+        return sum(p.alt_gain for p in self.probes)
+
+    @property
+    def max_speed(self) -> int:
+        """Maximum speed in meters per second."""
+        return max(p.max_speed for p in self.probes)
+
+
 class Probe(db.Model):
     __tablename__ = 'probes'
 
@@ -68,7 +96,7 @@ class Probe(db.Model):
         return self.dist == 0;
 
     @property
-    def received_at_local(self):
+    def received_at_local(self) -> datetime.datetime:
         return self.received_at.replace(tzinfo=pytz.UTC).astimezone(tz=timezone)
 
 @app.route('/')
@@ -171,6 +199,12 @@ def process_probe(probe: Probe) -> Optional[Activity]:
     activity.probes.append(probe)
 
     return activity
+
+@app.route('/activity/<int:id>')
+def activity(id: int):
+    act = Activity.query.get_or_404(id)
+
+    return render_template('activity.html', activity=act, maptiler_token=os.environ['MAPTILER_TOKEN'])
 
 if __name__ == '__main__':
     db.create_all(app=app)

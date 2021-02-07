@@ -32,7 +32,7 @@ public:
         // Positive elevation gain, in meters divided by 2 (range: [0..510] m).
         uint8_t alt_gain;
 
-        // Maximum speed, in meters per second divided by 16 (range between [0..57.375] kph).
+        // Maximum speed, in meters per second multiplied by 16 (range between [0..57.375] kph).
         uint8_t max_speed;
 
         // Constructs the message with the actual, non scaled, values.
@@ -42,7 +42,7 @@ public:
             lat(lat_), lng(lng_), alt(round(alt_ / 8)),
             dist(round(dist_ / 16)),
             alt_gain(round(alt_gain_ / 2)),
-            max_speed(round(max_speed_ / 16))
+            max_speed(round(max_speed_ * 16))
         { }
     } __attribute__((packed));
 

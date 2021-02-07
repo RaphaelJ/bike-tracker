@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>BikeTracker - Activity</title>
+
+    <link 
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+        integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
+        crossorigin="">
+
+    <script 
+        src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
+        integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
+        crossorigin="">
+    </script>
+</head>
+<body>
+    <h1>BikeTracker</h1>
+
+    <h2>Activity {{ activity.id }}</h2>
+
+    <dl>
+        <dt>Started at</dt>
+        <dd>{{ activity.started_at_local }}</dd>
+
+        <dt>Duration</dt>
+        <dd>{{ activity.duration }}</dd>
+
+        <dt>Total distance</dt>
+        <dd>{{ activity.total_distance }} m</dd>
+
+        <dt>Total altitude gain</dt>
+        <dd>{{ activity.total_alt_gain }} m</dd>
+
+        <dt>Max speed</dt>
+        <dd>
+            {{ "{:,.2f} m/s".format(activity.max_speed) }} 
+            ({{ "{:,.2f} km/h".format(activity.max_speed * 3.6) }})
+        </dd>
+    </dl>
+
+    <div id="activity-map" style="height: 500px; width: 500px;"></div>
+
+    <script>
+        var activityMap = L.map('activity-map');
+
+        L.tileLayer('https://api.maptiler.com/maps/basic/{z}/{x}/{y}.png?key={{ maptiler_token }}', {
+            tileSize: 512,
+            zoomOffset: -1,
+            minZoom: 1,
+            attribution: "\u003ca href=\"https://www.maptiler.com/copyright/\" target=\"_blank\"\u003e\u0026copy; MapTiler\u003c/a\u003e \u003ca href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\"\u003e\u0026copy; OpenStreetMap contributors\u003c/a\u003e",
+            crossOrigin: true
+        }).addTo(activityMap);
+
+        var points = [
+            {% for p in activity.probes %}
+                [{{ p.lat }}, {{ p.lng }}],
+            {% endfor %}
+        ];
+
+        var path = L.polyline(points, { color: 'blue' }).addTo(activityMap);
+
+        {% for p in activity.probes %}
+            L.marker([{{ p.lat }}, {{ p.lng }}]).addTo(activityMap);
+        {% endfor %}
+
+        activityMap.fitBounds(path.getBounds());
+    </script>
+</body>
+</html>
