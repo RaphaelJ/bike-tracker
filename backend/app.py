@@ -19,10 +19,15 @@
 
 import os, datetime
 
+from typing import Optional
+
+import pytz, wtforms
+
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
 
-import pytz, wtforms
+# Will finish an actvity if there was no movement for more than 20 minutes.
+INACTIVITY_DELAY = datetime.timedelta(minutes=20)
 
 app = Flask(__name__)
 app.config.from_object(os.environ['APP_SETTINGS'])
@@ -31,6 +36,13 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 timezone = pytz.timezone(os.environ.get('TIMEZONE', 'UTC'))
+
+class Activity(db.Model):
+    __tablename__ = 'activities'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    probes = db.relationship('Probe', backref='activity', order_by='Probe.id')
 
 class Probe(db.Model):
     __tablename__ = 'probes'
@@ -43,11 +55,17 @@ class Probe(db.Model):
 
     lat = db.Column(db.Float, nullable=True)
     lng = db.Column(db.Float, nullable=True)
-    alt = db.Column(db.Integer, nullable=True)
+    alt = db.Column(db.Integer, nullable=True)      # m
 
-    dist = db.Column(db.Integer, nullable=True)
-    alt_gain = db.Column(db.Integer, nullable=True)
-    max_speed = db.Column(db.Float, nullable=True)
+    dist = db.Column(db.Integer, nullable=True)     # m
+    alt_gain = db.Column(db.Integer, nullable=True) # m
+    max_speed = db.Column(db.Float, nullable=True)  # m/s
+
+    activity_id = db.Column(db.Integer, db.ForeignKey('activities.id'), nullable=True)
+
+    @property
+    def is_idle(self):
+        return self.dist == 0;
 
     @property
     def received_at_local(self):
@@ -98,7 +116,11 @@ def new_probe():
             alt_gain=form.alt_gain.data * 2,
             max_speed=form.max_speed.data / 16,
         )
+
         db.session.add(probe)
+        db.session.flush()
+
+        process_probe(probe)
 
         db.session.commit()
 
@@ -111,7 +133,44 @@ def new_probe():
 
         return jsonify(response), 201
     else:
+        print(form.errors)
         return 'Bad request', 400
+
+def process_probe(probe: Probe) -> Optional[Activity]:
+    if probe.is_idle:
+        return None
+
+    activity = None
+
+    # Tries to associate the probe with the latest activity
+    latest_activity = Activity.query        \
+        .order_by(Activity.id.desc())       \
+        .first()
+
+    if latest_activity:
+        probes = latest_activity.probes
+
+        if probe.received_at - probes[-1].received_at < INACTIVITY_DELAY:
+            # We can associate the probe with an existsing activity.
+            activity = latest_activity
+
+            # First we associate all idle activities in between with the activity.
+            idle_probes = Probe.query                   \
+                .filter(Probe.seq > probes[-1].seq)     \
+                .filter(Probe.seq < probe.seq)          \
+                .all()
+            for p in idle_probes:
+                activity.probes.append(p)
+
+    if activity is None:
+        # We couldn't associate the latest activity with the probe. Create a new activity.
+        activity = Activity()
+        db.session.add(activity)
+        db.session.flush()
+
+    activity.probes.append(probe)
+
+    return activity
 
 if __name__ == '__main__':
     db.create_all(app=app)

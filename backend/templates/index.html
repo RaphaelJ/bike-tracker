@@ -14,22 +14,25 @@
                     Seq
                 </th>
                 <th width="15%">
-                    Received at ({{ timezone.zone }})
+                    Received on ({{ timezone.zone }})
                 </th>
                 <th width="15%">
                     Coordinates
                 </th>
-                <th width="15%">
+                <th width="10%">
                     Altitude
                 </th>
-                <th width="15%">
+                <th width="10%">
                     Distance
                 </th>
-                <th width="15%">
+                <th width="10%">
                     Alt. gain
                 </th>
                 <th width="15%">
                     Max speed
+                </th>
+                <th width="15%">
+                    Activity
                 </th>
             </tr>
         </thead>
@@ -47,7 +50,11 @@
                     <td>{{ probe.alt }} m</td>
                     <td>{{ probe.dist }} m</td>
                     <td>{{ probe.alt_gain }} m</td>
-                    <td>{{ probe.max_speed }} m ({{ probe.max_speed / 3.6 }} km/h)</td>
+                    <td>
+                        {{ "{:,.2f} m/s".format(probe.max_speed) }} 
+                        ({{ "{:,.2f} km/h".format(probe.max_speed * 3.6) }})
+                    </td>
+                    <td>{{ probe.activity_id }}</td>
                 </tr>
             {% endfor %}
         </tbody>

@@ -19,7 +19,7 @@ class bike_tracker_t {
 public:
     enum class state_t { TRACKING, POWER_SAVE };
 
-    static constexpr bool DEBUG = true;
+    static constexpr bool DEBUG = false;
 
     // Will consider the bike idle if it moves slower than 4kph between two GPS probes.
     static constexpr float IDLE_THRESHOLD = 4.0f * 1000.0f / 3600.0f; // meters per sec
