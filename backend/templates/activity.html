@@ -23,6 +23,8 @@
 
     <h2>Activity {{ activity.id }}</h2>
 
+    <a href="{{ url_for('activity_gpx', id=activity.id) }}">.GPX</a>
+
     <dl>
         <dt>Started at</dt>
         <dd>{{ activity.started_at_local }}</dd>

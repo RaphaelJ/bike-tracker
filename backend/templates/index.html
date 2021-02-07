@@ -61,6 +61,7 @@
                             <a href="{{ url_for('activity', id=probe.activity_id) }}">
                                 {{ probe.activity_id }}
                             </a>
+                            (<a href="{{ url_for('activity_gpx', id=probe.activity_id) }}">.GPX</a>)
                         {% else %}
                             None
                         {% endif %}

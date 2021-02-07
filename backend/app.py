@@ -21,7 +21,7 @@ import os, datetime
 
 from typing import Optional
 
-import pytz, wtforms
+import gpxpy, gpxpy.gpx, pytz, wtforms
 
 from flask import Flask, jsonify, render_template, request
 from flask_sqlalchemy import SQLAlchemy
@@ -205,6 +205,27 @@ def activity(id: int):
     act = Activity.query.get_or_404(id)
 
     return render_template('activity.html', activity=act, maptiler_token=os.environ['MAPTILER_TOKEN'])
+
+@app.route('/activity/<int:id>/gpx')
+def activity_gpx(id: int):
+    act = Activity.query.get_or_404(id)
+
+    return gpx(act).to_xml(), 200, {'Content-Type': 'text/xml'}
+
+def gpx(activity: Activity):
+    gpx = gpxpy.gpx.GPX()
+
+    gpx_track = gpxpy.gpx.GPXTrack()
+    gpx.tracks.append(gpx_track)
+
+    gpx_segment = gpxpy.gpx.GPXTrackSegment()
+    gpx_track.segments.append(gpx_segment)
+
+    for p in activity.probes:
+        point = gpxpy.gpx.GPXTrackPoint(p.lat, p.lng, elevation=p.alt, time=p.received_at)
+        gpx_segment.points.append(point)
+
+    return gpx
 
 if __name__ == '__main__':
     db.create_all(app=app)
