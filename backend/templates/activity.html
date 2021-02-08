@@ -23,7 +23,13 @@
 
     <h2>Activity {{ activity.id }}</h2>
 
-    <a href="{{ url_for('activity_gpx', id=activity.id) }}">.GPX</a>
+    {% if activity.strava_activity_id %}
+        <a href="https://www.strava.com/activities/{{ activity.strava_activity_id }}">Strava activity</a>
+    {% else %}
+        <a href="{{url_for('activity_upload_to_strava', id=activity.id) }}">Upload to Strava</a>
+    {% endif %}
+    -
+    <a href="{{ url_for('activity_gpx', id=activity.id) }}">.GPX</a> 
 
     <dl>
         <dt>Started at</dt>
