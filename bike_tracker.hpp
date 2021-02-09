@@ -34,23 +34,25 @@ public:
     static constexpr float GPS_ALT_SMOOTHER_FACTOR = 0.2f;  // ratio
 
     // When in the TRACKING state, probes the location and speed every 20 seconds, and sends the
-    // location every 3 minutes.
-    static constexpr uint32_t TRACKING_GPS_PROBE_DELAY  = 20;        // sec
-    static constexpr uint32_t TRACKING_RADIO_DELAY      = 3 * 60;    // sec
+    // location every 3 minutes, except for the first radio message being transmitted after 1 minute
+    // (about the time to get a GPS fix).
+    static constexpr uint32_t TRACKING_GPS_PROBE_DELAY      = 20;        // sec
+    static constexpr uint32_t TRACKING_RADIO_DELAY          = 3 * 60;    // sec
+    static constexpr uint32_t TRACKING_RADIO_FIRST_DELAY    = 60;        // sec
 
     // The tracker will move into the POWER_SAVE state if there the sensor stayed idle for 9 of the
     // last 12 location probes (4 minutes).
     static constexpr uint32_t TRACKING_IDLE_PROBES      = 9;
     static constexpr uint32_t TRACKING_IDLE_BUFFER_SIZE = 12;
 
-    // When in POWER_SAVE mode, probes and transmit the location every 60 minutes. 
+    // When in POWER_SAVE mode, probes and transmit the location every 60 minutes.
     static constexpr uint32_t POWER_SAVE_GPS_PROBE_DELAY = 60 * 60;  // sec
 
     void setup()
     {
         led_t::setup_all();
 
-        for (led_t *led : led_t::all) { 
+        for (led_t *led : led_t::all) {
             led->on();
         }
 
@@ -61,7 +63,7 @@ public:
         clock_.begin();
         clock_.setY2kEpoch(0);
 
-        for (led_t *led : led_t::all) { 
+        for (led_t *led : led_t::all) {
             led->off();
         }
     }
@@ -101,13 +103,13 @@ private:
         float smoothed_alt;
 
         // Accumulated since the last location message:
-        float distance{0};  // meters
-        float alt_gain{0};  // meters
-        float max_speed{0}; // m/s 
+        float distance{0};          // meters
+        float alt_gain{0};          // meters
+        uint32_t moving_time{0};    // secs
 
         // The number of previous GPS probes that did not exceed IDLE_THRESHOLD.
         //
-        // Keep a buffer of the previous probes 
+        // Keep a buffer of the previous probes
         etl::queue<bool, TRACKING_IDLE_BUFFER_SIZE> idle_probes{};
         uint32_t n_idle{0};
     } gps_;
@@ -115,10 +117,10 @@ private:
     struct {
         radio_t instance;
 
-        uint32_t last_msg_time{0};
+        etl::optional<uint32_t> last_msg_time;
 
         // Undefined if no planned message.
-        etl::optional<uint32_t> next_msg_time{TRACKING_RADIO_DELAY};
+        etl::optional<uint32_t> next_msg_time{TRACKING_RADIO_FIRST_DELAY};
     } radio_;
 
     struct {
@@ -231,9 +233,16 @@ private:
         gps_.n_idle = 0;
 
         if (radio_.next_msg_time.has_value()) {
-            radio_.next_msg_time = min(*radio_.next_msg_time, now + TRACKING_RADIO_DELAY);
+            radio_.next_msg_time = min(*radio_.next_msg_time, now + TRACKING_RADIO_FIRST_DELAY);
         } else {
-            radio_.next_msg_time = now + TRACKING_RADIO_DELAY;
+            radio_.next_msg_time = now + TRACKING_RADIO_FIRST_DELAY;
+        }
+
+        // Check there is at least `TRACKING_RADIO_DELAY` since the last message.
+        if (radio_.last_msg_time.has_value()) {
+            radio_.next_msg_time = max(
+                radio_.next_msg_time,
+                *radio_.last_msg_time + TRACKING_RADIO_DELAY);
         }
 
         movement_.detector.disable();
@@ -300,14 +309,15 @@ private:
             probe_result_t result;
 
             if (gps_.has_position) {
-                float delta_secs = (float) (now - gps_.last_position_time);
+                uint32_t delta_secs = now - gps_.last_position_time;
+                float delta_secs_fp = (float) delta_secs;
                 float dist = gps_t::distance(position.coordinates, gps_.last_position.coordinates);
 
-                float speed = dist / delta_secs;
+                float speed = dist / delta_secs_fp;
 
                 float alt_gain;
                 {
-                    float smoothed_alt = 
+                    float smoothed_alt =
                         gps_.smoothed_alt * (1.0f - GPS_ALT_SMOOTHER_FACTOR) +
                         position.coordinates.alt * GPS_ALT_SMOOTHER_FACTOR;
 
@@ -322,7 +332,7 @@ private:
                     // Ignore altitude changes when veryfing if the device moves.
                     float horiz_dist = gps_t::distance(
                         position.coordinates, gps_.last_position.coordinates, true);
-                    float horiz_speed = horiz_dist / delta_secs;
+                    float horiz_speed = horiz_dist / delta_secs_fp;
 
                     is_idle = horiz_speed < IDLE_THRESHOLD;
                 }
@@ -338,10 +348,7 @@ private:
                 } else {
                     gps_.distance += dist;
                     gps_.alt_gain += alt_gain;
-
-                    if (speed > gps_.max_speed) {
-                        gps_.max_speed = speed;
-                    }
+                    gps_.moving_time += delta_secs;
 
                     result = probe_result_t::MOVING;
                 }
@@ -366,7 +373,10 @@ private:
         logger::info("Send location message");
 
         float lat, lng, alt;
-        if (gps_.has_position && gps_.last_position_time > radio_.last_msg_time) {
+        if (
+            gps_.has_position &&
+            (!radio_.last_msg_time || gps_.last_position_time > *radio_.last_msg_time)
+        ) {
             lat = gps_.last_position.coordinates.lat;
             lng = gps_.last_position.coordinates.lng;
             alt = gps_.last_position.coordinates.alt;
@@ -375,16 +385,14 @@ private:
             lat = lng = alt = 0.0f;
         }
 
-        uint32_t last_msg = now - radio_.last_msg_time;
-
-        radio_t::location_msg_t msg{lat, lng, alt, gps_.distance, gps_.alt_gain, gps_.max_speed};
+        radio_t::location_msg_t msg{lat, lng, alt, gps_.distance, gps_.alt_gain, gps_.moving_time};
 
         etl::optional<uint64_t> response = radio_.instance.send(msg);
 
         if (response.has_value()) {
             gps_.distance = 0.0f;
             gps_.alt_gain = 0.0f;
-            gps_.max_speed = 0.0f;
+            gps_.moving_time = 0;
 
             radio_.last_msg_time = now;
         }

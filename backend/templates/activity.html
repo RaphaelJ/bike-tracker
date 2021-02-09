@@ -6,13 +6,13 @@
 
     <title>BikeTracker - Activity</title>
 
-    <link 
+    <link
         rel="stylesheet"
         href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
         integrity="sha512-xodZBNTC5n17Xt2atTPuE1HxjVMSvLVW9ocqUKLsCC5CXdbqCmblAshOMAS6/keqq/sMZMZ19scR4PsZChSR7A=="
         crossorigin="">
 
-    <script 
+    <script
         src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"
         integrity="sha512-XQoYMqMTK8LvdxXYG3nZ448hOEQiglfqkJs1NOQV44cWnUrBc8PkAOcXy20w0vlaXaVUearIOBhiXZ5V3ynxwA=="
         crossorigin="">
@@ -29,7 +29,7 @@
         <a href="{{url_for('activity_upload_to_strava', id=activity.id) }}">Upload to Strava</a>
     {% endif %}
     -
-    <a href="{{ url_for('activity_gpx', id=activity.id) }}">.GPX</a> 
+    <a href="{{ url_for('activity_gpx', id=activity.id) }}">.GPX</a>
 
     <dl>
         <dt>Started at</dt>
@@ -38,17 +38,14 @@
         <dt>Duration</dt>
         <dd>{{ activity.duration }}</dd>
 
+        <dt>Moving time</dt>
+        <dd>{{ activity.total_moving_time }}</dd>
+
         <dt>Total distance</dt>
         <dd>{{ activity.total_distance }} m</dd>
 
         <dt>Total altitude gain</dt>
         <dd>{{ activity.total_alt_gain }} m</dd>
-
-        <dt>Max speed</dt>
-        <dd>
-            {{ "{:,.2f} m/s".format(activity.max_speed) }} 
-            ({{ "{:,.2f} km/h".format(activity.max_speed * 3.6) }})
-        </dd>
     </dl>
 
     <div id="activity-map" style="height: 500px; width: 500px;"></div>

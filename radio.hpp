@@ -16,7 +16,7 @@ public:
 
     struct location_msg_t {
         static_assert(sizeof(float) == 4);
-        
+
         // Latest location. Has a 0 value if no valid location.
         float lat;
         float lng;
@@ -24,7 +24,7 @@ public:
         // Latest altitude, in meters, divided by 8 (range: [0..2040] m).
         // Do not go to the Netherlands or the Alps.
         // Has a 0 value if no valid location.
-        uint8_t alt; 
+        uint8_t alt;
 
         // Distance since the last message, in meters per divided by 16 (range: [0..4080] m).
         uint8_t dist;
@@ -32,22 +32,22 @@ public:
         // Positive elevation gain, in meters divided by 2 (range: [0..510] m).
         uint8_t alt_gain;
 
-        // Maximum speed, in meters per second multiplied by 16 (range between [0..57.375] kph).
-        uint8_t max_speed;
+        // The time in movement, in seconds divived by 8 (range: [0..34] minutes).
+        uint8_t moving_time;
 
         // Constructs the message with the actual, non scaled, values.
         location_msg_t(
             float lat_, float lng_, float alt_,
-            float dist_, float alt_gain_, float max_speed_) :
+            float dist_, float alt_gain_, uint32_t moving_time_) :
             lat(lat_), lng(lng_), alt(round(alt_ / 8)),
             dist(round(dist_ / 16)),
             alt_gain(round(alt_gain_ / 2)),
-            max_speed(round(max_speed_ * 16))
+            moving_time(round((float) moving_time_ / 8))
         { }
     } __attribute__((packed));
 
     void
-    setup() 
+    setup()
     {
         wake_up();
 
@@ -100,7 +100,7 @@ public:
         if (status != 0) {
             logger::warning(
                 "Error while transmitting SigFox paquet (status: 0x" + String(status, HEX) + ")");
-        } else {    
+        } else {
             uint64_t value{0};
             String value_str = String();
 
@@ -124,7 +124,7 @@ public:
         return response;
     }
 
-    void 
+    void
     wake_up()
     {
         if (!SigFox.begin()) {

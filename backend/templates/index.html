@@ -8,7 +8,7 @@
 </head>
 <body>
     <h1>BikeTracker</h1>
-    
+
     <table border="1">
         <thead>
             <tr>
@@ -31,7 +31,7 @@
                     Alt. gain
                 </th>
                 <th width="15%">
-                    Max speed
+                    Moving time
                 </th>
                 <th width="15%">
                     Activity
@@ -52,16 +52,12 @@
                     <td>{{ probe.alt }} m</td>
                     <td>{{ probe.dist }} m</td>
                     <td>{{ probe.alt_gain }} m</td>
-                    <td>
-                        {{ "{:,.2f} m/s".format(probe.max_speed) }} 
-                        ({{ "{:,.2f} km/h".format(probe.max_speed * 3.6) }})
-                    </td>
+                    <td>{{ probe.moving_time }} secs</td>
                     <td>
                         {% if probe.activity_id %}
                             <a href="{{ url_for('activity', id=probe.activity_id) }}">
                                 {{ probe.activity_id }}
                             </a>
-                            (<a href="{{ url_for('activity_gpx', id=probe.activity_id) }}">.GPX</a>)
                         {% else %}
                             None
                         {% endif %}

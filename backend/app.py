@@ -49,7 +49,7 @@ class Activity(db.Model):
 
     @property
     def started_at_local(self) -> datetime.datetime:
-        return self.probes[0].received_at_local
+        return self.probes[0].received_at_local - self.probes[0].moving_time_td
 
     @property
     def ended_at_local(self) -> datetime.datetime:
@@ -70,10 +70,8 @@ class Activity(db.Model):
         return sum(p.alt_gain for p in self.probes)
 
     @property
-    def max_speed(self) -> int:
-        """Maximum speed in meters per second."""
-        return max(p.max_speed for p in self.probes)
-
+    def total_moving_time(self) -> datetime.timedelta:
+        return sum((p.moving_time_td for p in self.probes), datetime.timedelta())
 
 class Probe(db.Model):
     __tablename__ = 'probes'
@@ -86,17 +84,21 @@ class Probe(db.Model):
 
     lat = db.Column(db.Float, nullable=True)
     lng = db.Column(db.Float, nullable=True)
-    alt = db.Column(db.Integer, nullable=True)      # m
+    alt = db.Column(db.Integer, nullable=True)          # m
 
-    dist = db.Column(db.Integer, nullable=True)     # m
-    alt_gain = db.Column(db.Integer, nullable=True) # m
-    max_speed = db.Column(db.Float, nullable=True)  # m/s
+    dist = db.Column(db.Integer, nullable=True)         # m
+    alt_gain = db.Column(db.Integer, nullable=True)     # m
+    moving_time = db.Column(db.Integer, nullable=True)  # secs
 
     activity_id = db.Column(db.Integer, db.ForeignKey('activities.id'), nullable=True)
 
     @property
     def is_idle(self):
-        return self.dist == 0;
+        return self.dist == 0
+
+    @property
+    def moving_time_td(self) -> datetime.timedelta:
+        return datetime.timedelta(seconds=self.moving_time)
 
     @property
     def received_at_local(self) -> datetime.datetime:
@@ -123,7 +125,7 @@ class ProbeForm(wtforms.Form):
 
     dist = wtforms.IntegerField('Distance', [wtforms.validators.InputRequired()])
     alt_gain = wtforms.IntegerField('Elevation gain', [wtforms.validators.InputRequired()])
-    max_speed = wtforms.IntegerField('Elevation gain', [wtforms.validators.InputRequired()])
+    moving_time = wtforms.IntegerField('Moving time', [wtforms.validators.InputRequired()])
 
     def validate_device(form, field):
         if field.data != os.environ['DEVICE_ID']:
@@ -145,7 +147,7 @@ def new_probe():
 
             dist=form.dist.data * 16,
             alt_gain=form.alt_gain.data * 2,
-            max_speed=form.max_speed.data / 16,
+            moving_time=form.moving_time.data * 8,
         )
 
         db.session.add(probe)
@@ -260,7 +262,7 @@ def activity_upload_to_strava(id: int):
             commute=1,
             external_id=activity.id,
         )
-    
+
     # Waits for the activity to be processed
     while not upload.activity_id:
         if upload.error:
@@ -273,7 +275,7 @@ def activity_upload_to_strava(id: int):
     activity_update = swagger_client.UpdatableActivity(type='Ride', gear_id=gear_id)
     client.activities_api.update_activity_by_id(upload.activity_id, body=activity_update)
 
-    # Sets 
+    # Sets
     activity.strava_activity_id = upload.activity_id
     db.session.add(activity)
     db.session.commit()
