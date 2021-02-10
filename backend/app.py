@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with CovidTracer. If not, see<https://www.gnu.org/licenses/>.
 
-import os, datetime, tempfile, time
+import os, datetime, requests, tempfile, time
 
 from typing import Optional
 
@@ -238,6 +238,7 @@ def gpx(activity: Activity):
 def activity_upload_to_strava(id: int):
     access_token = os.environ['STRAVA_ACCESS_TOKEN']
     gear_id = os.environ.get('STRAVA_GEAR_ID')
+    description = 'Automatically recorded with https://github.com/RaphaelJ/bike-tracker'
 
     activity = Activity.query.get_or_404(id)
 
@@ -246,37 +247,62 @@ def activity_upload_to_strava(id: int):
     if activity.strava_activity_id:
         return redirect_to
 
+    # FIXME: Strava-IO `create_activity` does not work properly.
+
+    resp = requests.post(
+        'https://www.strava.com/api/v3/activities',
+        headers={
+            'Accept': 'application/json',
+            'Authorization': 'Bearer ' + access_token,
+        },
+        data={
+            'name': 'Commute',
+            'description': description,
+            'type': 'Ride',
+            'start_date_local': activity.started_at_local.isoformat(),
+            'elapsed_time': round(activity.total_moving_time.total_seconds()),
+            'distance': activity.total_distance,
+            'commute': 1,
+        }
+    )
+    resp.raise_for_status()
+
+    activity_id = resp.json()['id']
+
     client = StravaIO(access_token=access_token)
-    client.upload_api = swagger_client.UploadsApi(client._api_client)
 
-    gpx_content = gpx(activity)
+    # client.upload_api = swagger_client.UploadsApi(client._api_client)
 
-    # Uploads the GPX to Strava
-    with tempfile.NamedTemporaryFile(mode='w+t') as f:
-        f.write(gpx_content.to_xml())
-        f.flush()
+    # gpx_content = gpx(activity)
 
-        upload = client.upload_api.create_upload(
-            file=f.name, data_type='gpx',
-            description='Automatically recorded with https://github.com/RaphaelJ/bike-tracker',
-            commute=1,
-            external_id=activity.id,
-        )
+    # # Uploads the GPX to Strava
+    # with tempfile.NamedTemporaryFile(mode='w+t') as f:
+    #     f.write(gpx_content.to_xml())
+    #     f.flush()
 
-    # Waits for the activity to be processed
-    while not upload.activity_id:
-        if upload.error:
-            raise Exception(f'Error while processing Strava activity: "{upload.error}"')
+    #     upload = client.upload_api.create_upload(
+    #         file=f.name, data_type='gpx',
+    #         description=descriptiom,
+    #         commute=1,
+    #         external_id=activity.id,
+    #     )
 
-        time.sleep(3)
-        upload = client.upload_api.get_upload_by_id(upload.id)
+    # # Waits for the activity to be processed
+    # while not upload.activity_id:
+    #     if upload.error:
+    #         raise Exception(f'Error while processing Strava activity: "{upload.error}"')
 
-    # Edit the activity type and gear ID.
+    #     time.sleep(3)
+    #     upload = client.upload_api.get_upload_by_id(upload.id)
+
+    # activity_id = upload.activity_id
+
+    # Edits the activity type and sets gear ID.
     activity_update = swagger_client.UpdatableActivity(type='Ride', gear_id=gear_id)
-    client.activities_api.update_activity_by_id(upload.activity_id, body=activity_update)
+    client.activities_api.update_activity_by_id(activity_id, body=activity_update)
 
-    # Sets
-    activity.strava_activity_id = upload.activity_id
+    # Saves the activity ID
+    activity.strava_activity_id = activity_id
     db.session.add(activity)
     db.session.commit()
 
