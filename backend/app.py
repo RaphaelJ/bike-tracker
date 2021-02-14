@@ -27,8 +27,8 @@ from flask import Flask, jsonify, redirect, render_template, request, url_for
 from flask_sqlalchemy import SQLAlchemy
 from stravaio import StravaIO
 
-# Will finish an actvity if there was no movement for more than 20 minutes.
-INACTIVITY_DELAY = datetime.timedelta(minutes=20)
+# Will finish an actvity if there was no movement for more one hour.
+INACTIVITY_DELAY = datetime.timedelta(hours=1)
 
 app = Flask(__name__)
 app.config.from_object(os.environ['APP_SETTINGS'])
