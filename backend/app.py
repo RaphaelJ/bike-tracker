@@ -80,7 +80,7 @@ class Probe(db.Model):
 
     received_at = db.Column(db.DateTime(), nullable=False, default=datetime.datetime.utcnow)
 
-    seq = db.Column(db.Integer, nullable=False, unique=True)
+    seq = db.Column(db.Integer, nullable=False)
 
     lat = db.Column(db.Float, nullable=True)
     lng = db.Column(db.Float, nullable=True)
@@ -108,8 +108,9 @@ class Probe(db.Model):
 def index():
     """Shows a dashboard with the latest GPS locations of the tracker."""
 
-    probes = Probe.query                    \
-        .order_by(Probe.seq.desc())         \
+    probes = Probe.query                            \
+        .order_by(Probe.received_at.desc())         \
+        .limit(1000)
         .all()
 
     return render_template('index.html', timezone=timezone, probes=probes)
@@ -189,8 +190,8 @@ def process_probe(probe: Probe) -> Optional[Activity]:
 
             # First we associate all idle activities in between with the activity.
             idle_probes = Probe.query                   \
-                .filter(Probe.seq > probes[-1].seq)     \
-                .filter(Probe.seq < probe.seq)          \
+                .filter(Probe.id > probes[-1].id)       \
+                .filter(Probe.id < probe.id)            \
                 .all()
             for p in idle_probes:
                 activity.probes.append(p)
