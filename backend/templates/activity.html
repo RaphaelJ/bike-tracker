@@ -21,6 +21,8 @@
 <body>
     <h1>BikeTracker</h1>
 
+    <a href="{{ url_for('index') }}">← Return</a>
+
     <h2>Activity {{ activity.id }}</h2>
 
     {% if activity.strava_activity_id %}
@@ -30,10 +32,29 @@
     {% endif %}
     -
     <a href="{{ url_for('activity_gpx', id=activity.id) }}">.GPX</a>
+    -
+
+    <script>
+        function merge_activity_into(other_id) {
+            window.location = "/activity/{{ activity.id }}/merge-into/" + other_id;
+        }
+    </script>
+    Merge into
+    <select id="merge_into_activity">
+        {% for other_activity in other_activities %}
+            <option value="{{ other_activity.id }}">
+                {{ other_activity.id }}
+                ({{ other_activity.started_at_local.strftime('%c') }})
+            </option>
+        {% endfor %}
+    </select>
+    <button onclick="merge_activity_into(document.getElementById('merge_into_activity').value)">
+        Go
+    </button>
 
     <dl>
         <dt>Started at</dt>
-        <dd>{{ activity.started_at_local }}</dd>
+        <dd>{{ activity.started_at_local.strftime('%c') }}</dd>
 
         <dt>Duration</dt>
         <dd>{{ activity.duration }}</dd>

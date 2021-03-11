@@ -25,6 +25,7 @@ import gpxpy, gpxpy.gpx, pytz, swagger_client, wtforms
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import or_
 from stravaio import StravaIO
 
 # Will finish an actvity if there was no movement for more one hour.
@@ -110,7 +111,7 @@ def index():
 
     probes = Probe.query                            \
         .order_by(Probe.received_at.desc())         \
-        .limit(1000)
+        .limit(1000)                                \
         .all()
 
     return render_template('index.html', timezone=timezone, probes=probes)
@@ -210,7 +211,33 @@ def process_probe(probe: Probe) -> Optional[Activity]:
 def activity(id: int):
     act = Activity.query.get_or_404(id)
 
-    return render_template('activity.html', activity=act, maptiler_token=os.environ['MAPTILER_TOKEN'])
+    other_acts = Activity.query         \
+        .filter(Activity.id < id)       \
+        .filter(Activity.id >= id - 5)  \
+        .order_by(Activity.id.desc())   \
+        .all()
+
+    return render_template(
+        'activity.html',
+        activity=act, other_activities=other_acts, maptiler_token=os.environ['MAPTILER_TOKEN']
+    )
+
+@app.route('/activity/<int:id>/merge-into/<int:other_id>')
+def activity_merge_into(id: int, other_id: int):
+    """Merges the activity into another one and then remove it."""
+
+    act = Activity.query.get_or_404(id)
+    other_act = Activity.query.get_or_404(other_id)
+
+    Probe.query                                 \
+        .filter(Probe.activity_id == id)        \
+        .update({Probe.activity_id: other_id})
+
+    db.session.delete(act)
+
+    db.session.commit()
+
+    return redirect(url_for('activity', id=other_id))
 
 @app.route('/activity/<int:id>/gpx')
 def activity_gpx(id: int):
