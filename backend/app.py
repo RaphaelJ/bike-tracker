@@ -105,6 +105,14 @@ class Probe(db.Model):
     def received_at_local(self) -> datetime.datetime:
         return self.received_at.replace(tzinfo=pytz.UTC).astimezone(tz=timezone)
 
+class StravaAccessToken(db.Model):
+    __tablename__ = 'strava_access_token'
+
+    token = db.Column(db.String, primary_key=True)
+    refresh_token = db.Column(db.String, nullable=False)
+
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+
 @app.route('/')
 def index():
     """Shows a dashboard with the latest GPS locations of the tracker."""
@@ -264,7 +272,8 @@ def gpx(activity: Activity):
 
 @app.route('/activity/<int:id>/upload-to-strava')
 def activity_upload_to_strava(id: int):
-    access_token = os.environ['STRAVA_ACCESS_TOKEN']
+    access_token = get_strava_access_token()
+
     gear_id = os.environ.get('STRAVA_GEAR_ID')
     description = 'Automatically recorded with https://github.com/RaphaelJ/bike-tracker'
 
@@ -335,6 +344,42 @@ def activity_upload_to_strava(id: int):
     db.session.commit()
 
     return redirect_to
+
+def get_strava_access_token() -> str:
+    latest_token = StravaAccessToken.query              \
+        .order_by(StravaAccessToken.expires_at.desc())  \
+        .first()
+
+    now = datetime.datetime.utcnow()
+    if now < latest_token.expires_at:
+        return latest_token.token
+    else:
+        # Token expired, uses the refresh token to generate a new one.
+        resp = requests.post(
+            'https://www.strava.com/oauth/token',
+            data={
+                'client_id': os.environ['STRAVA_CLIENT_ID'],
+                'client_secret': os.environ['STRAVA_CLIENT_SECRET'],
+                'grant_type': 'refresh_token',
+                'refresh_token': latest_token.refresh_token,
+            }
+        )
+
+        resp.raise_for_status()
+        json_data = resp.json()
+
+        access_token = json_data['access_token']
+
+        if access_token != latest_token.token:
+            token = StravaAccessToken(
+                token=access_token,
+                refresh_token=json_data['refresh_token'],
+                expires_at=datetime.datetime.utcfromtimestamp(json_data['expires_at'])
+            )
+            db.session.add(token)
+            db.session.commit()
+
+        return access_token
 
 if __name__ == '__main__':
     db.create_all(app=app)
