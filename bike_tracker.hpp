@@ -24,8 +24,11 @@ public:
     // Will consider the bike idle if it moves slower than 4kph between two GPS probes.
     static constexpr float IDLE_THRESHOLD = 4.0f * 1000.0f / 3600.0f; // meters per sec
 
-    // Will wait 1 second after an unsuccessful GPS probe before trying again.
+    // Will wait 5 seconds after an unsuccessful GPS probe before trying again, up to 10 times.
+    // When the maximum number of retries is reached, considers the next unsuccessful probes as
+    // IDLE.
     static constexpr uint32_t GPS_RETRY_DELAY = 5; // sec
+    static constexpr uint32_t GPS_MAX_RETRIES = 10;
 
     // Will wait 1 minute after an unsuccessful radio message before trying again.
     static constexpr uint32_t RADIO_RETRY_DELAY = 60; // sec
@@ -96,6 +99,8 @@ private:
 
         uint32_t next_probe_time{0};
 
+        uint32_t n_retries{0};
+
         bool has_position{false}; // false until we get at least on successful GPS position.
         gps_t::position_t last_position;
         uint32_t last_position_time;
@@ -127,15 +132,14 @@ private:
         movement_detector_t detector{A1};
     } movement_;
 
-
     void loop_tracking(uint32_t now)
     {
         if (now >= gps_.next_probe_time) {
             probe_result_t result = probe_gps(now);
 
-            if (result == probe_result_t::NO_FIX) {
-                gps_.next_probe_time = now + GPS_RETRY_DELAY;
-            } else {
+            handle_no_gps_fix(now, &result);
+
+            if (result != probe_result_t::NO_FIX) {
                 gps_.next_probe_time = now + TRACKING_GPS_PROBE_DELAY;
 
                 if (result != probe_result_t::UNKNOWN) {
@@ -188,9 +192,9 @@ private:
         if (now >= gps_.next_probe_time) {
             probe_result_t result = probe_gps(now);
 
-            if (result == probe_result_t::NO_FIX) {
-                gps_.next_probe_time = now + GPS_RETRY_DELAY;
-            } else {
+            handle_no_gps_fix(now, &result);
+
+            if (result != probe_result_t::NO_FIX) {
                 gps_.instance.sleep();
                 gps_.next_probe_time = now + POWER_SAVE_GPS_PROBE_DELAY;
 
@@ -365,6 +369,23 @@ private:
         } else {
             logger::warning("Unsuccessful GPS probe.");
             return probe_result_t::NO_FIX;
+        }
+    }
+
+    // Reschedules a new GPS probe if required, and overrides NO_FIX probes when the number of
+    // retries is exceeded.
+    void handle_no_gps_fix(unsigned long now, probe_result_t *result)
+    {
+        if (*result == probe_result_t::NO_FIX) {
+            if (gps_.n_retries < GPS_MAX_RETRIES) {
+                gps_.next_probe_time = now + GPS_RETRY_DELAY;
+                ++gps_.n_retries;
+            } else {
+                // Number of retries exceeded. Now considers NO_FIX as IDLE probes.
+                *result = probe_result_t::IDLE;
+            }
+        } else {
+            gps_.n_retries = 0;
         }
     }
 

@@ -44,11 +44,11 @@ public:
     { }
 
     void
-    setup() 
+    setup()
     {
         serial_.begin(9600);
         while(!serial_);
-        
+
         if (!instance_.begin(serial_)) {
             logger::error("Unable to setup GPS.");
         }
@@ -130,7 +130,7 @@ public:
 
         return instance_.getPowerSaveMode();
     }
- 
+
     void power_save(bool enabled)
     {
         if (!powered_on_) {
@@ -145,7 +145,7 @@ public:
     // If `ignore_alt` is true, only computes the horizontal distance.
     static float distance(
         const coordinates_t &coord_a, const coordinates_t &coord_b, bool ignore_alt = false)
-    {   
+    {
         // Based on http://www.movable-type.co.uk/scripts/latlong.html.
 
         constexpr float earth_raduis = 6371.0f * 1000.0f; // in meters
