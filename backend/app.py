@@ -105,6 +105,10 @@ class Probe(db.Model):
     def received_at_local(self) -> datetime.datetime:
         return self.received_at.replace(tzinfo=pytz.UTC).astimezone(tz=timezone)
 
+    @property
+    def has_coordinates(self):
+        return self.lat != 0 and self.lng != 0
+
 class StravaAccessToken(db.Model):
     __tablename__ = 'strava_access_token'
 
@@ -210,6 +214,14 @@ def process_probe(probe: Probe) -> Optional[Activity]:
         activity = Activity()
         db.session.add(activity)
         db.session.flush()
+
+        # The activity should start on the latest position where we were not moving.
+        prev_probe = Probe.query                \
+            .order_by(Probe.id.desc())            \
+            .first()
+
+        if prev_probe and prev_probe.is_idle and prev_probe.has_coordinates():
+            activity.probes.append(prev_probe)
 
     activity.probes.append(probe)
 
